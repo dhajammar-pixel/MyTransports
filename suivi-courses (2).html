@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Route&Bilan — Suivi des courses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --navy-950:#0b1220;
+  --navy-900:#101a30;
+  --navy-800:#16213e;
+  --blue-600:#2563eb;
+  --blue-500:#3b82f6;
+  --blue-100:#dbeafe;
+  --amber-500:#f59e0b;
+  --amber-600:#d97706;
+  --white:#ffffff;
+  --paper:#f4f6fb;
+  --ink-900:#0f1729;
+  --ink-600:#4b5670;
+  --ink-400:#8992a8;
+  --line:#e4e8f2;
+  --green-600:#16a34a;
+  --red-600:#dc2626;
+  --radius:14px;
+  --shadow:0 8px 24px -8px rgba(16,26,48,.18);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--paper);
+  color:var(--ink-900);
+  min-height:100vh;
+}
+h1,h2,h3,.brand,.nav-item,.stat-value{font-family:'Space Grotesk',sans-serif;}
+
+/* ---------- layout ---------- */
+.app{display:flex;min-height:100vh;}
+.sidebar{
+  width:250px;
+  flex-shrink:0;
+  background:linear-gradient(175deg,var(--navy-950),var(--navy-800) 85%);
+  color:#cfd7ee;
+  display:flex;
+  flex-direction:column;
+  padding:26px 18px;
+  position:relative;
+  overflow:hidden;
+}
+.sidebar::after{
+  content:"";
+  position:absolute;
+  left:0;right:0;bottom:0;height:120px;
+  background-image:repeating-linear-gradient(90deg,transparent 0 10px, rgba(59,130,246,.35) 10px 24px);
+  mask-image:linear-gradient(transparent, black);
+  opacity:.25;
+  pointer-events:none;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  font-size:19px;font-weight:700;color:var(--white);
+  margin-bottom:6px;
+}
+.brand .dot{width:11px;height:11px;border-radius:50%;background:var(--amber-500);box-shadow:0 0 0 4px rgba(245,158,11,.18);}
+.brand-sub{font-size:11.5px;color:#8b9ac2;margin-bottom:30px;letter-spacing:.03em;}
+.nav{display:flex;flex-direction:column;gap:4px;flex:1;}
+.nav-item{
+  display:flex;align-items:center;gap:11px;
+  padding:11px 12px;border-radius:10px;
+  cursor:pointer;font-size:14.5px;font-weight:500;
+  color:#aab6d6;border:1px solid transparent;
+  transition:background .15s,color .15s;
+  user-select:none;
+}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85;}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
+.nav-item.active{
+  background:linear-gradient(90deg,rgba(59,130,246,.22),rgba(59,130,246,.05));
+  color:#fff;border-color:rgba(59,130,246,.35);
+}
+.nav-item.active svg{opacity:1;}
+.sidebar-foot{
+  font-size:11px;color:#65729a;padding-top:16px;margin-top:12px;
+  border-top:1px dashed rgba(255,255,255,.12);position:relative;z-index:1;
+  display:flex;align-items:center;gap:7px;
+}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#65729a;}
+.sync-dot.online{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);}
+.sync-dot.offline{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.2);}
+.sync-dot.error{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.2);}
+
+.content{flex:1;padding:32px 38px 60px;max-width:1180px;}
+.page{display:none;}
+.page.active{display:block;animation:fade .25s ease;}
+@keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
+.page-head h1{font-size:24px;margin:0 0 4px;color:var(--ink-900);}
+.page-head p{margin:0;color:var(--ink-600);font-size:13.5px;}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--blue-600);margin-bottom:6px;
+}
+.eyebrow::before{content:"";width:16px;height:2px;background:var(--amber-500);border-radius:2px;}
+
+/* ---------- cards ---------- */
+.card{
+  background:var(--white);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  border:1px solid var(--line);
+  padding:22px;
+}
+.grid{display:grid;gap:18px;}
+.grid.cols-2{grid-template-columns:1fr 1fr;}
+.grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.grid.cols-4{grid-template-columns:repeat(4,1fr);}
+@media(max-width:900px){.grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr 1fr;}}
+
+/* ---------- form ---------- */
+label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-600);margin:0 0 5px;}
+input,select,textarea{
+  width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--line);
+  font-family:'Inter',sans-serif;font-size:14px;color:var(--ink-900);background:#fbfcfe;
+  transition:border-color .15s,box-shadow .15s;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue-500);box-shadow:0 0 0 3px var(--blue-100);}
+.field{margin-bottom:14px;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:11px 18px;border-radius:9px;border:none;cursor:pointer;
+  font-family:'Inter',sans-serif;font-weight:600;font-size:14px;
+  transition:transform .1s, box-shadow .15s, background .15s;
+}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:linear-gradient(135deg,var(--blue-600),var(--blue-500));color:#fff;box-shadow:0 6px 16px -4px rgba(37,99,235,.5);}
+.btn-primary:hover{box-shadow:0 8px 20px -4px rgba(37,99,235,.65);}
+.btn-amber{background:linear-gradient(135deg,var(--amber-600),var(--amber-500));color:#fff;box-shadow:0 6px 16px -4px rgba(217,119,6,.5);}
+.btn-ghost{background:#eef1f8;color:var(--ink-600);}
+.btn-ghost:hover{background:#e3e7f2;}
+.btn-danger-ghost{background:#fef2f2;color:var(--red-600);}
+.btn-danger-ghost:hover{background:#fde3e3;}
+.btn-sm{padding:6px 10px;font-size:12.5px;border-radius:7px;}
+.hint{font-size:12px;color:var(--ink-400);margin-top:4px;}
+
+.divider-route{height:1px;margin:20px 0;background-image:repeating-linear-gradient(90deg,var(--line) 0 8px, transparent 8px 16px);}
+
+/* estimate box */
+.estimate-box{
+  border-radius:12px;padding:16px 18px;margin-top:6px;
+  background:linear-gradient(135deg,var(--navy-900),var(--navy-800));
+  color:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+}
+.estimate-box .km{font-size:12.5px;color:#9db1e0;}
+.estimate-box .price{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:#fff;}
+.estimate-box .price span{font-size:14px;color:#9db1e0;font-weight:500;}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th{text-align:left;color:var(--ink-400);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 10px;border-bottom:1.5px solid var(--line);}
+td{padding:11px 10px;border-bottom:1px solid var(--line);color:var(--ink-900);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#f8faff;}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;}
+.pill-blue{background:var(--blue-100);color:var(--blue-600);}
+.pill-amber{background:#fef3c7;color:var(--amber-600);}
+.pill-green{background:#dcfce7;color:var(--green-600);}
+.row-actions{display:flex;gap:6px;}
+.empty{padding:34px 10px;text-align:center;color:var(--ink-400);font-size:13.5px;}
+
+/* calendar */
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.cal-head .month-label{font-size:17px;font-weight:700;font-family:'Space Grotesk',sans-serif;}
+.cal-nav{display:flex;gap:8px;}
+.cal-nav button{
+  width:34px;height:34px;border-radius:9px;border:1.5px solid var(--line);background:#fff;
+  cursor:pointer;font-size:16px;color:var(--ink-600);display:flex;align-items:center;justify-content:center;
+}
+.cal-nav button:hover{background:var(--blue-100);border-color:var(--blue-500);color:var(--blue-600);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.cal-dow{text-align:center;font-size:11px;font-weight:700;color:var(--ink-400);text-transform:uppercase;padding-bottom:6px;}
+.cal-day{
+  aspect-ratio:1/.85;border-radius:10px;background:#fff;border:1.5px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink-900);position:relative;
+  transition:transform .12s;
+}
+.cal-day:hover{transform:translateY(-2px);border-color:var(--blue-500);}
+.cal-day.muted{color:var(--ink-400);opacity:.4;cursor:default;}
+.cal-day.muted:hover{transform:none;border-color:var(--line);}
+.cal-day.today{border-color:var(--amber-500);border-width:2px;}
+.cal-day.has-course{
+  background:linear-gradient(160deg,var(--blue-600),var(--blue-500));
+  color:#fff;border-color:var(--blue-600);
+  box-shadow:0 6px 14px -4px rgba(37,99,235,.5);
+}
+.cal-day .badge{font-size:9.5px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 6px;border-radius:20px;margin-top:1px;}
+.cal-day.has-course .badge{background:rgba(255,255,255,.28);}
+.cal-day.selected{outline:2.5px solid var(--amber-500);outline-offset:1px;}
+.cal-legend{display:flex;gap:18px;margin-top:16px;font-size:12px;color:var(--ink-600);}
+.cal-legend span{display:inline-flex;align-items:center;gap:6px;}
+.swatch{width:11px;height:11px;border-radius:4px;display:inline-block;}
+
+/* stat cards */
+.stat-card{padding:18px 20px;border-radius:var(--radius);position:relative;overflow:hidden;box-shadow:var(--shadow);}
+.stat-card .label{font-size:12px;font-weight:600;opacity:.85;margin-bottom:8px;}
+.stat-value{font-size:23px;font-weight:700;}
+.stat-blue{background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;}
+.stat-red{background:linear-gradient(135deg,#7f1d1d,#dc2626);color:#fff;}
+.stat-amber{background:linear-gradient(135deg,#92400e,#d97706);color:#fff;}
+.stat-green{background:linear-gradient(135deg,#065f46,#16a34a);color:#fff;}
+.stat-navy{background:linear-gradient(135deg,var(--navy-950),var(--navy-800));color:#fff;}
+
+.tabs{display:flex;gap:6px;margin-bottom:18px;background:#eef1f8;padding:5px;border-radius:11px;width:fit-content;}
+.tab-btn{padding:8px 16px;border-radius:8px;border:none;background:transparent;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink-600);font-family:'Inter';}
+.tab-btn.active{background:#fff;color:var(--blue-600);box-shadow:0 2px 6px rgba(16,26,48,.12);}
+.subpage{display:none;}
+.subpage.active{display:block;}
+
+.section-title{font-size:15px;font-weight:700;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+.section-title .amber-dot{width:7px;height:7px;border-radius:50%;background:var(--amber-500);}
+
+@media(max-width:760px){
+  .sidebar{width:70px;padding:20px 10px;}
+  .sidebar .brand-text,.sidebar .brand-sub,.nav-item span,.sidebar-foot{display:none;}
+  .nav-item{justify-content:center;}
+  .content{padding:22px 16px 50px;}
+  .grid.cols-4,.grid.cols-3{grid-template-columns:1fr 1fr;}
+  .field-row{grid-template-columns:1fr;}
+  #page-clients .grid.cols-2{grid-template-columns:1fr !important;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="dot"></span><span class="brand-text">Route&amp;Bilan</span></div>
+    <div class="brand-sub">Suivi journalier des courses</div>
+    <nav class="nav">
+      <div class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>
+        <span>Tableau &amp; calendrier</span>
+      </div>
+      <div class="nav-item" data-page="courses">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l2-6h14l2 6M5 12h14v6H5z"/><circle cx="7.5" cy="18" r="1.4"/><circle cx="16.5" cy="18" r="1.4"/></svg>
+        <span>Courses</span>
+      </div>
+      <div class="nav-item" data-page="charges">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V8a1 1 0 011-1h4V3h6v4h4a1 1 0 011 1v13"/><path d="M9 21v-4h6v4M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/></svg>
+        <span>Charges &amp; salaire</span>
+      </div>
+      <div class="nav-item" data-page="clients">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.8-3.6 3-5.5 5.5-5.5s4.7 1.9 5.5 5.5"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M15.8 14.6c2.1.3 3.7 2 4.2 4.3"/></svg>
+        <span>Clients</span>
+      </div>
+      <div class="nav-item" data-page="bilan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+        <span>Bilan &amp; analyse</span>
+      </div>
+    </nav>
+    <div class="sidebar-foot" id="syncStatus">Connexion à la base…</div>
+  </aside>
+
+  <main class="content">
+
+    <!-- ================= DASHBOARD / CALENDAR ================= -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Menu principal</div>
+          <h1>Calendrier des courses</h1>
+          <p>Les jours contenant au moins une course apparaissent en bleu.</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="align-items:start;">
+        <div class="card">
+          <div class="cal-head">
+            <div class="month-label" id="calMonthLabel">—</div>
+            <div class="cal-nav">
+              <button id="calPrev">‹</button>
+              <button id="calToday" class="btn-sm" style="width:auto;padding:0 10px;">Aujourd'hui</button>
+              <button id="calNext">›</button>
+            </div>
+          </div>
+          <div class="cal-grid" id="calDow"></div>
+          <div class="cal-grid" id="calGrid" style="margin-top:6px;"></div>
+          <div class="cal-legend">
+            <span><span class="swatch" style="background:linear-gradient(160deg,#2563eb,#3b82f6);"></span>Jour avec course(s)</span>
+            <span><span class="swatch" style="background:#fff;border:1.5px solid var(--line);"></span>Jour sans course</span>
+            <span><span class="swatch" style="background:#fff;border:2px solid var(--amber-500);"></span>Aujourd'hui</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title"><span class="amber-dot"></span><span id="selDayTitle">Sélectionnez un jour</span></div>
+          <div id="selDayList"></div>
+          <div class="divider-route"></div>
+          <div class="grid cols-3" id="dashMini"></div>
+          <div class="divider-route"></div>
+          <div class="section-title"><span class="amber-dot"></span>Rendez-vous d'aujourd'hui</div>
+          <div id="dashRdv"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= COURSES ================= -->
+    <section class="page" id="page-courses">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Trajets</div>
+          <h1>Nouvelle course</h1>
+          <p>Le prix est estimé automatiquement selon la distance, puis reste modifiable.</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="align-items:start;">
+        <div class="card">
+          <div class="field">
+            <label>Date de la course</label>
+            <input type="date" id="cDate">
+          </div>
+          <div class="field">
+            <label>Nom du client</label>
+            <input list="clientsList" id="cClient" placeholder="ex : Ahmed Ben Salah">
+          </div>
+          <datalist id="clientsList"></datalist>
+
+          <div class="field-row">
+            <div class="field">
+              <label>Ville de départ</label>
+              <input list="villesList" id="cDepart" placeholder="ex : Monastir">
+            </div>
+            <div class="field">
+              <label>Ville d'arrivée</label>
+              <input list="villesList" id="cArrivee" placeholder="ex : Sousse">
+            </div>
+          </div>
+          <datalist id="villesList"></datalist>
+
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:var(--ink-600);font-size:12.5px;margin:2px 0 14px;">
+            <input type="checkbox" id="cAllerRetour" style="width:16px;height:16px;accent-color:var(--blue-600);">
+            Aller-retour (double la distance calculée automatiquement)
+          </label>
+
+          <div class="field-row">
+            <div class="field">
+              <label>Distance (km)</label>
+              <input type="number" step="0.1" id="cKm" placeholder="calculée automatiquement">
+            </div>
+            <div class="field">
+              <label>Tarif par km (DT)</label>
+              <input type="number" step="0.01" id="cTarif">
+            </div>
+          </div>
+
+          <div class="estimate-box">
+            <div>
+              <div class="km" id="estKmLabel">Distance estimée : —</div>
+              <div class="price">— DT <span>estimation</span></div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:14px;">
+            <label>Prix final de la course (DT) — modifiable</label>
+            <input type="number" step="0.1" id="cPrixFinal">
+            <div class="hint">Pré-rempli avec le prix estimé, vous pouvez l'ajuster librement.</div>
+          </div>
+
+          <div class="field">
+            <label>Note (optionnel)</label>
+            <input type="text" id="cNote" placeholder="ex : client régulier, aller-retour...">
+          </div>
+
+          <button class="btn btn-primary" id="cSubmit" style="width:100%;margin-top:6px;">Enregistrer la course</button>
+        </div>
+
+        <div class="card">
+          <div class="section-title"><span class="amber-dot"></span>Historique des courses</div>
+          <div style="max-height:520px;overflow:auto;">
+            <table>
+              <thead><tr><th>Date</th><th>Client</th><th>Trajet</th><th>Km</th><th>Prix</th><th></th></tr></thead>
+              <tbody id="coursesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CHARGES ================= -->
+    <section class="page" id="page-charges">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Dépenses</div>
+          <h1>Entretiens, carburant &amp; salaire</h1>
+          <p>Enregistrez les dépenses liées au véhicule et au chauffeur.</p>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="tab-entretien">Entretien</button>
+        <button class="tab-btn" data-tab="tab-carburant">Carburant</button>
+        <button class="tab-btn" data-tab="tab-salaire">Salaire chauffeur</button>
+      </div>
+
+      <div class="subpage active" id="tab-entretien">
+        <div class="grid cols-2" style="align-items:start;">
+          <div class="card">
+            <div class="field"><label>Date</label><input type="date" id="eDate"></div>
+            <div class="field"><label>Description</label><input type="text" id="eDesc" placeholder="ex : vidange, pneus, freins..."></div>
+            <div class="field"><label>Montant (DT)</label><input type="number" step="0.1" id="eMontant"></div>
+            <button class="btn btn-amber" id="eSubmit" style="width:100%;">Ajouter l'entretien</button>
+          </div>
+          <div class="card">
+            <div class="section-title"><span class="amber-dot"></span>Historique entretien</div>
+            <table><thead><tr><th>Date</th><th>Description</th><th>Montant</th><th></th></tr></thead><tbody id="entretienTbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="subpage" id="tab-carburant">
+        <div class="grid cols-2" style="align-items:start;">
+          <div class="card">
+            <div class="field"><label>Date</label><input type="date" id="fDate"></div>
+            <div class="field-row">
+              <div class="field"><label>Litres</label><input type="number" step="0.1" id="fLitres"></div>
+              <div class="field"><label>Prix / litre (DT)</label><input type="number" step="0.001" id="fPrixLitre"></div>
+            </div>
+            <div class="field"><label>Montant total (DT)</label><input type="number" step="0.1" id="fMontant"></div>
+            <button class="btn btn-amber" id="fSubmit" style="width:100%;">Ajouter le plein</button>
+          </div>
+          <div class="card">
+            <div class="section-title"><span class="amber-dot"></span>Historique carburant</div>
+            <table><thead><tr><th>Date</th><th>Litres</th><th>Montant</th><th></th></tr></thead><tbody id="carburantTbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="subpage" id="tab-salaire">
+        <div class="grid cols-2" style="align-items:start;">
+          <div class="card">
+            <div class="field"><label>Date</label><input type="date" id="sDate"></div>
+            <div class="field"><label>Description</label><input type="text" id="sDesc" placeholder="ex : salaire mensuel, avance..."></div>
+            <div class="field"><label>Montant (DT)</label><input type="number" step="0.1" id="sMontant"></div>
+            <button class="btn btn-amber" id="sSubmit" style="width:100%;">Ajouter le paiement</button>
+          </div>
+          <div class="card">
+            <div class="section-title"><span class="amber-dot"></span>Historique salaire</div>
+            <table><thead><tr><th>Date</th><th>Description</th><th>Montant</th><th></th></tr></thead><tbody id="salaireTbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CLIENTS ================= -->
+    <section class="page" id="page-clients">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Suivi</div>
+          <h1>Clients</h1>
+          <p>Historique de travail par client, et rendez-vous récurrents modifiables.</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="align-items:start;grid-template-columns:340px 1fr;">
+        <div class="card">
+          <div class="section-title"><span class="amber-dot"></span>Nouveau client</div>
+          <div class="field"><label>Nom</label><input type="text" id="clNom" placeholder="ex : Ahmed Ben Salah"></div>
+          <div class="field"><label>Téléphone (optionnel)</label><input type="text" id="clTel" placeholder="ex : 20 123 456"></div>
+          <div class="field"><label>Note (optionnel)</label><input type="text" id="clNote" placeholder="ex : société, adresse..."></div>
+          <button class="btn btn-primary" id="clSubmit" style="width:100%;">Ajouter le client</button>
+          <div class="divider-route"></div>
+          <div class="section-title"><span class="amber-dot"></span>Liste des clients</div>
+          <div id="clientsListBox" style="max-height:400px;overflow:auto;"></div>
+        </div>
+
+        <div id="clientDetailBox">
+          <div class="card"><div class="empty">Sélectionnez ou ajoutez un client pour voir sa fiche.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BILAN ================= -->
+    <section class="page" id="page-bilan">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Analyse</div>
+          <h1>Bilan financier</h1>
+          <p>Filtrez par période pour voir le gain, les charges et leur répartition.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px;">
+        <div class="field-row" style="align-items:end;">
+          <div class="field" style="margin-bottom:0;"><label>Du</label><input type="date" id="bFrom"></div>
+          <div class="field" style="margin-bottom:0;"><label>Au</label><input type="date" id="bTo"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" data-range="today">Aujourd'hui</button>
+          <button class="btn btn-ghost btn-sm" data-range="week">Cette semaine</button>
+          <button class="btn btn-ghost btn-sm" data-range="month">Ce mois</button>
+          <button class="btn btn-ghost btn-sm" data-range="year">Cette année</button>
+          <button class="btn btn-ghost btn-sm" data-range="all">Tout</button>
+        </div>
+      </div>
+
+      <div class="grid cols-4" style="margin-bottom:18px;">
+        <div class="stat-card stat-blue"><div class="label">Gains (courses)</div><div class="stat-value" id="statGain">0.00 DT</div></div>
+        <div class="stat-card stat-amber"><div class="label">Coût entretien</div><div class="stat-value" id="statEntretien">0.00 DT</div></div>
+        <div class="stat-card stat-red"><div class="label">Carburant</div><div class="stat-value" id="statCarburant">0.00 DT</div></div>
+        <div class="stat-card stat-navy"><div class="label">Salaire chauffeur</div><div class="stat-value" id="statSalaire">0.00 DT</div></div>
+      </div>
+
+      <div class="grid cols-2" style="align-items:start;">
+        <div class="card">
+          <div class="section-title"><span class="amber-dot"></span>Bénéfice net</div>
+          <div class="stat-card stat-green" style="margin-bottom:0;">
+            <div class="label">Gains − (entretien + carburant + salaire)</div>
+            <div class="stat-value" id="statNet" style="font-size:30px;">0.00 DT</div>
+          </div>
+          <div class="hint" style="margin-top:12px;" id="netHint"></div>
+        </div>
+        <div class="card">
+          <div class="section-title"><span class="amber-dot"></span>Répartition (%)</div>
+          <canvas id="pieChart" height="210"></canvas>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   DONNÉES : villes tunisiennes (coordonnées approx.)
+   ============================================================ */
+const VILLES = {
+  "Monastir":{lat:35.7643,lng:10.8113}, "Sousse":{lat:35.8256,lng:10.6084},
+  "Tunis":{lat:36.8065,lng:10.1815}, "Sfax":{lat:34.7406,lng:10.7603},
+  "Kairouan":{lat:35.6781,lng:10.0963}, "Mahdia":{lat:35.5047,lng:11.0622},
+  "Nabeul":{lat:36.4561,lng:10.7376}, "Hammamet":{lat:36.4000,lng:10.6167},
+  "Bizerte":{lat:37.2744,lng:9.8739}, "Gabès":{lat:33.8815,lng:10.0982},
+  "Gafsa":{lat:34.4250,lng:8.7842}, "Kasserine":{lat:35.1676,lng:8.8365},
+  "Djerba (Houmt Souk)":{lat:33.8076,lng:10.8451}, "Tozeur":{lat:33.9197,lng:8.1335},
+  "Zaghouan":{lat:36.4028,lng:10.1425}, "Béja":{lat:36.7256,lng:9.1817},
+  "Jendouba":{lat:36.5011,lng:8.7803}, "Le Kef":{lat:36.1826,lng:8.7148},
+  "Siliana":{lat:36.0844,lng:9.3708}, "Kébili":{lat:33.7044,lng:8.9690},
+  "Médenine":{lat:33.3399,lng:10.4956}, "Tataouine":{lat:32.9297,lng:10.4518},
+  "Sidi Bouzid":{lat:35.0381,lng:9.4858}, "Ariana":{lat:36.8625,lng:10.1956},
+  "Ben Arous":{lat:36.7533,lng:10.2189}, "Manouba":{lat:36.8081,lng:10.0972},
+  "Menzel Bourguiba":{lat:37.1556,lng:9.7897}, "Ksar Hellal":{lat:35.6439,lng:10.8908},
+  "Moknine":{lat:35.6333,lng:10.9},"Msaken":{lat:35.7333,lng:10.5833}
+};
+const ROAD_FACTOR = 1.3; // facteur d'approximation route / vol d'oiseau
+
+/* ============================================================
+   STOCKAGE LOCAL
+   ============================================================ */
+const DB_KEY = "routebilan_data_v1";
+function loadDB(){
+  let db=null;
+  try{
+    const raw = localStorage.getItem(DB_KEY);
+    if(raw) db = JSON.parse(raw);
+  }catch(e){}
+  if(!db) db={};
+  db.courses = db.courses||[];
+  db.entretiens = db.entretiens||[];
+  db.carburant = db.carburant||[];
+  db.salaires = db.salaires||[];
+  db.clients = db.clients||[];
+  db.rendezvous = db.rendezvous||[];
+  db.settings = db.settings||{tarifKm:0.70};
+  return db;
+}
+function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
+let DB = loadDB();
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function fmt(n){ return (Math.round((n||0)*100)/100).toFixed(2); }
+function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
+
+/* ============================================================
+   SUPABASE — synchronisation cloud
+   ============================================================ */
+const SUPABASE_URL = "https://kzkiwpmvfgbxwwwlzsdi.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6a2l3cG12ZmdieHd3d2x6c2RpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNjQxMjcsImV4cCI6MjEwMzc0MDEyN30.sbCHNn5XSyiCGMwqihetVRZHfO6CIcbCLODwoxPPh5Q";
+const sb = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+function setSyncStatus(state){
+  const el=document.getElementById("syncStatus");
+  if(!el) return;
+  const labels={
+    checking:["", "Connexion à la base…"],
+    online:["online", "Synchronisé avec Supabase"],
+    offline:["offline", "Hors-ligne — cache local utilisé"],
+    error:["error", "Erreur Supabase — voir console"],
+    unavailable:["error", "Supabase non chargé (bloqué / hors-ligne)"]
+  };
+  const [cls,label]=labels[state]||labels.checking;
+  el.innerHTML = `<span class="sync-dot ${cls}"></span><span>${label}</span>`;
+}
+
+/* Conversion camelCase (app) <-> snake_case (table Supabase) */
+function toRow(table,o){
+  if(table==="courses") return {id:o.id,date:o.date,client:o.client||null,depart:o.depart,arrivee:o.arrivee,km:o.km,tarif_km:o.tarifKm,prix_estime:o.prixEstime,prix_final:o.prixFinal,note:o.note||null};
+  if(table==="entretiens") return {id:o.id,date:o.date,description:o.desc,montant:o.montant};
+  if(table==="carburant") return {id:o.id,date:o.date,litres:o.litres,montant:o.montant};
+  if(table==="salaires") return {id:o.id,date:o.date,description:o.desc,montant:o.montant};
+  if(table==="clients") return {id:o.id,nom:o.nom,tel:o.tel||null,note:o.note||null};
+  if(table==="rendezvous") return {id:o.id,client_id:o.clientId,heure:o.heure,note:o.note||null,jours:o.jours};
+  return o;
+}
+function fromRow(table,r){
+  if(table==="courses") return {id:r.id,date:r.date,client:r.client||"",depart:r.depart,arrivee:r.arrivee,km:r.km,tarifKm:r.tarif_km,prixEstime:r.prix_estime,prixFinal:r.prix_final,note:r.note||""};
+  if(table==="entretiens") return {id:r.id,date:r.date,desc:r.description||"",montant:r.montant};
+  if(table==="carburant") return {id:r.id,date:r.date,litres:r.litres,montant:r.montant};
+  if(table==="salaires") return {id:r.id,date:r.date,desc:r.description||"",montant:r.montant};
+  if(table==="clients") return {id:r.id,nom:r.nom,tel:r.tel||"",note:r.note||""};
+  if(table==="rendezvous") return {id:r.id,clientId:r.client_id,heure:r.heure,note:r.note||"",jours:r.jours||[]};
+  return r;
+}
+
+async function syncInsert(table,obj){
+  if(!sb) return;
+  try{
+    const {error}=await sb.from(table).insert(toRow(table,obj));
+    if(error) throw error;
+    setSyncStatus("online");
+  }catch(err){ console.warn("Supabase insert échoué ("+table+")", err); setSyncStatus("offline"); }
+}
+async function syncUpdate(table,id,patchObjLike){
+  if(!sb) return;
+  try{
+    const row=toRow(table,patchObjLike);
+    delete row.id;
+    const {error}=await sb.from(table).update(row).eq("id",id);
+    if(error) throw error;
+    setSyncStatus("online");
+  }catch(err){ console.warn("Supabase update échoué ("+table+")", err); setSyncStatus("offline"); }
+}
+async function syncDelete(table,id){
+  if(!sb) return;
+  try{
+    const {error}=await sb.from(table).delete().eq("id",id);
+    if(error) throw error;
+    setSyncStatus("online");
+  }catch(err){ console.warn("Supabase delete échoué ("+table+")", err); setSyncStatus("offline"); }
+}
+async function syncSettings(tarifKm){
+  if(!sb) return;
+  try{
+    const {error}=await sb.from("settings").upsert({id:"default", tarif_km:tarifKm});
+    if(error) throw error;
+    setSyncStatus("online");
+  }catch(err){ console.warn("Supabase settings échoué", err); setSyncStatus("offline"); }
+}
+
+async function pullFromSupabase(){
+  if(!sb){ setSyncStatus("unavailable"); return; }
+  setSyncStatus("checking");
+  try{
+    const tables=["courses","entretiens","carburant","salaires","clients","rendezvous"];
+    const results=await Promise.all(tables.map(t=>sb.from(t).select("*")));
+    results.forEach((res,i)=>{ if(res.error) throw res.error; });
+    const settingsRes=await sb.from("settings").select("*").eq("id","default").maybeSingle();
+    if(settingsRes.error) throw settingsRes.error;
+
+    tables.forEach((t,i)=>{ DB[t]=results[i].data.map(r=>fromRow(t,r)); });
+    if(settingsRes.data) DB.settings.tarifKm = settingsRes.data.tarif_km;
+    saveDB();
+    setSyncStatus("online");
+
+    renderCourses(); renderCharges(); renderCalendar(); refreshBilan();
+    refreshClientsDatalist(); renderClientsList();
+    if(selectedClientId) renderClientDetail();
+    if(typeof cTarif!=="undefined" && cTarif) cTarif.value = DB.settings.tarifKm;
+  }catch(err){
+    console.warn("Supabase indisponible, le cache local est utilisé.", err);
+    setSyncStatus("offline");
+  }
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+document.querySelectorAll(".nav-item").forEach(item=>{
+  item.addEventListener("click", ()=>{
+    document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    item.classList.add("active");
+    document.getElementById("page-"+item.dataset.page).classList.add("active");
+    if(item.dataset.page==="bilan") refreshBilan();
+    if(item.dataset.page==="dashboard") renderCalendar();
+    if(item.dataset.page==="clients") renderClientsList();
+  });
+});
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".subpage").forEach(s=>s.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+
+/* ============================================================
+   VILLE DATALIST
+   ============================================================ */
+const villesList = document.getElementById("villesList");
+Object.keys(VILLES).sort().forEach(v=>{
+  const o=document.createElement("option"); o.value=v; villesList.appendChild(o);
+});
+
+/* ============================================================
+   HAVERSINE
+   ============================================================ */
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function estimateKm(v1,v2){
+  const a=VILLES[v1], b=VILLES[v2];
+  if(!a||!b) return null;
+  return Math.round(haversine(a.lat,a.lng,b.lat,b.lng)*ROAD_FACTOR*10)/10;
+}
+
+/* ============================================================
+   FORMULAIRE COURSE
+   ============================================================ */
+const cDate=document.getElementById("cDate"), cDepart=document.getElementById("cDepart"),
+      cArrivee=document.getElementById("cArrivee"), cKm=document.getElementById("cKm"),
+      cTarif=document.getElementById("cTarif"), cPrixFinal=document.getElementById("cPrixFinal"),
+      cNote=document.getElementById("cNote"), estKmLabel=document.getElementById("estKmLabel"),
+      estPriceBox=document.querySelector(".estimate-box .price");
+
+cDate.value = todayISO();
+cTarif.value = DB.settings.tarifKm;
+
+const cAllerRetour=document.getElementById("cAllerRetour");
+let kmManuallyEdited=false;
+cKm.addEventListener("input", ()=>{ kmManuallyEdited=true; updateEstimate(false); });
+
+function autoComputeKm(){
+  const v1=cDepart.value.trim(), v2=cArrivee.value.trim();
+  if(VILLES[v1] && VILLES[v2]){
+    let km = estimateKm(v1,v2);
+    if(cAllerRetour.checked) km = Math.round(km*2*10)/10;
+    if(!kmManuallyEdited || cKm.value===""){ cKm.value = km; }
+  }
+  updateEstimate(true);
+}
+cDepart.addEventListener("input", ()=>{ kmManuallyEdited=false; autoComputeKm(); });
+cArrivee.addEventListener("input", ()=>{ kmManuallyEdited=false; autoComputeKm(); });
+cAllerRetour.addEventListener("change", ()=>{ kmManuallyEdited=false; autoComputeKm(); });
+cTarif.addEventListener("input", ()=>updateEstimate(false));
+
+let userEditedFinal=false;
+cPrixFinal.addEventListener("input", ()=>{ userEditedFinal=true; });
+
+function updateEstimate(fromCities){
+  const km=parseFloat(cKm.value)||0;
+  const tarif=parseFloat(cTarif.value)||0;
+  const estimation = km*tarif;
+  const v1=cDepart.value.trim(), v2=cArrivee.value.trim();
+  if(VILLES[v1] && VILLES[v2]){
+    estKmLabel.textContent = `Distance estimée : ${km} km (${v1} → ${v2}${cAllerRetour.checked?" · aller-retour":""})`;
+  } else if(km>0){
+    estKmLabel.textContent = `Distance saisie manuellement : ${km} km`;
+  } else {
+    estKmLabel.textContent = "Distance estimée : —";
+  }
+  estPriceBox.innerHTML = `${fmt(estimation)} DT <span>estimation</span>`;
+  if(!userEditedFinal){ cPrixFinal.value = fmt(estimation); }
+}
+updateEstimate(false);
+
+document.getElementById("cSubmit").addEventListener("click", ()=>{
+  const depart=cDepart.value.trim(), arrivee=cArrivee.value.trim();
+  const client=document.getElementById("cClient").value.trim();
+  const km=parseFloat(cKm.value)||0;
+  const tarif=parseFloat(cTarif.value)||0;
+  const prixFinal=parseFloat(cPrixFinal.value)||0;
+  if(!cDate.value || !depart || !arrivee || !prixFinal){
+    alert("Merci de renseigner au minimum la date, le départ, l'arrivée et le prix.");
+    return;
+  }
+  const newCourse={
+    id:uid(), date:cDate.value, client, depart, arrivee, km,
+    tarifKm:tarif, prixEstime:Math.round(km*tarif*100)/100, prixFinal, note:cNote.value.trim()
+  };
+  DB.courses.push(newCourse);
+  DB.settings.tarifKm = tarif;
+  const newClient=ensureClient(client);
+  saveDB();
+  syncInsert("courses", newCourse);
+  syncSettings(tarif);
+  if(newClient && newClient.__isNew){ syncInsert("clients", newClient); }
+  cDepart.value=""; cArrivee.value=""; cKm.value=""; cNote.value=""; document.getElementById("cClient").value="";
+  cAllerRetour.checked=false;
+  userEditedFinal=false; kmManuallyEdited=false;
+  updateEstimate(false);
+  renderCourses(); renderCalendar(); renderClientsList(); refreshClientsDatalist();
+});
+
+function ensureClient(nom){
+  if(!nom) return null;
+  let existing = DB.clients.find(c=>c.nom.toLowerCase()===nom.toLowerCase());
+  if(existing) return existing;
+  const c={id:uid(), nom, tel:"", note:"", __isNew:true};
+  DB.clients.push(c);
+  return c;
+}
+
+function renderCourses(){
+  const tbody=document.getElementById("coursesTbody");
+  const items=[...DB.courses].sort((a,b)=>b.date.localeCompare(a.date));
+  if(items.length===0){ tbody.innerHTML=`<tr><td colspan="6"><div class="empty">Aucune course enregistrée pour le moment.</div></td></tr>`; return; }
+  tbody.innerHTML = items.map(c=>`
+    <tr>
+      <td>${frDate(c.date)}</td>
+      <td>${c.client?escapeHtml(c.client):`<span class="hint">—</span>`}</td>
+      <td>${escapeHtml(c.depart)} → ${escapeHtml(c.arrivee)}${c.note?`<div class="hint">${escapeHtml(c.note)}</div>`:""}</td>
+      <td><span class="pill pill-blue">${c.km||0} km</span></td>
+      <td><strong>${fmt(c.prixFinal)} DT</strong></td>
+      <td class="row-actions">
+        <button class="btn btn-danger-ghost btn-sm" onclick="deleteItem('courses','${c.id}')">Suppr.</button>
+      </td>
+    </tr>`).join("");
+}
+
+/* ============================================================
+   CHARGES : ENTRETIEN / CARBURANT / SALAIRE
+   ============================================================ */
+document.getElementById("eDate").value=todayISO();
+document.getElementById("fDate").value=todayISO();
+document.getElementById("sDate").value=todayISO();
+
+const fLitres=document.getElementById("fLitres"), fPrixLitre=document.getElementById("fPrixLitre"), fMontant=document.getElementById("fMontant");
+let fMontantEdited=false;
+fMontant.addEventListener("input", ()=>fMontantEdited=true);
+[fLitres,fPrixLitre].forEach(el=>el.addEventListener("input", ()=>{
+  if(!fMontantEdited){
+    const l=parseFloat(fLitres.value)||0, p=parseFloat(fPrixLitre.value)||0;
+    fMontant.value = fmt(l*p);
+  }
+}));
+
+document.getElementById("eSubmit").addEventListener("click", ()=>{
+  const desc=document.getElementById("eDesc").value.trim();
+  const montant=parseFloat(document.getElementById("eMontant").value)||0;
+  const date=document.getElementById("eDate").value;
+  if(!date||!desc||!montant){ alert("Merci de remplir tous les champs de l'entretien."); return; }
+  const obj={id:uid(), date, desc, montant};
+  DB.entretiens.push(obj);
+  saveDB();
+  syncInsert("entretiens", obj);
+  document.getElementById("eDesc").value=""; document.getElementById("eMontant").value="";
+  renderCharges();
+});
+document.getElementById("fSubmit").addEventListener("click", ()=>{
+  const date=document.getElementById("fDate").value;
+  const litres=parseFloat(fLitres.value)||0;
+  const montant=parseFloat(fMontant.value)||0;
+  if(!date||!litres||!montant){ alert("Merci de remplir tous les champs du carburant."); return; }
+  const obj={id:uid(), date, litres, montant};
+  DB.carburant.push(obj);
+  saveDB();
+  syncInsert("carburant", obj);
+  fLitres.value=""; fPrixLitre.value=""; fMontant.value=""; fMontantEdited=false;
+  renderCharges();
+});
+document.getElementById("sSubmit").addEventListener("click", ()=>{
+  const date=document.getElementById("sDate").value;
+  const desc=document.getElementById("sDesc").value.trim();
+  const montant=parseFloat(document.getElementById("sMontant").value)||0;
+  if(!date||!montant){ alert("Merci de renseigner la date et le montant du salaire."); return; }
+  const obj={id:uid(), date, desc, montant};
+  DB.salaires.push(obj);
+  saveDB();
+  syncInsert("salaires", obj);
+  document.getElementById("sDesc").value=""; document.getElementById("sMontant").value="";
+  renderCharges();
+});
+
+function renderCharges(){
+  const eBody=document.getElementById("entretienTbody");
+  const eItems=[...DB.entretiens].sort((a,b)=>b.date.localeCompare(a.date));
+  eBody.innerHTML = eItems.length? eItems.map(x=>`
+    <tr><td>${frDate(x.date)}</td><td>${escapeHtml(x.desc)}</td><td>${fmt(x.montant)} DT</td>
+    <td><button class="btn btn-danger-ghost btn-sm" onclick="deleteItem('entretiens','${x.id}')">Suppr.</button></td></tr>`).join("")
+    : `<tr><td colspan="4"><div class="empty">Aucun entretien enregistré.</div></td></tr>`;
+
+  const fBody=document.getElementById("carburantTbody");
+  const fItems=[...DB.carburant].sort((a,b)=>b.date.localeCompare(a.date));
+  fBody.innerHTML = fItems.length? fItems.map(x=>`
+    <tr><td>${frDate(x.date)}</td><td>${x.litres} L</td><td>${fmt(x.montant)} DT</td>
+    <td><button class="btn btn-danger-ghost btn-sm" onclick="deleteItem('carburant','${x.id}')">Suppr.</button></td></tr>`).join("")
+    : `<tr><td colspan="4"><div class="empty">Aucun plein enregistré.</div></td></tr>`;
+
+  const sBody=document.getElementById("salaireTbody");
+  const sItems=[...DB.salaires].sort((a,b)=>b.date.localeCompare(a.date));
+  sBody.innerHTML = sItems.length? sItems.map(x=>`
+    <tr><td>${frDate(x.date)}</td><td>${escapeHtml(x.desc||"—")}</td><td>${fmt(x.montant)} DT</td>
+    <td><button class="btn btn-danger-ghost btn-sm" onclick="deleteItem('salaires','${x.id}')">Suppr.</button></td></tr>`).join("")
+    : `<tr><td colspan="4"><div class="empty">Aucun paiement enregistré.</div></td></tr>`;
+}
+
+function deleteItem(collection,id){
+  if(!confirm("Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible.")) return;
+  DB[collection]=DB[collection].filter(x=>x.id!==id);
+  saveDB();
+  syncDelete(collection, id);
+  renderCourses(); renderCharges(); renderCalendar(); refreshBilan();
+  renderClientsList();
+  if(selectedClientId) renderClientDetail();
+}
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function frDate(iso){
+  const [y,m,d]=iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+
+/* ============================================================
+   CLIENTS
+   ============================================================ */
+let selectedClientId=null;
+let editingRdvId=null;
+const JOURS_SEMAINE=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+
+function refreshClientsDatalist(){
+  const dl=document.getElementById("clientsList");
+  dl.innerHTML = DB.clients.map(c=>`<option value="${escapeHtml(c.nom)}">`).join("");
+}
+
+document.getElementById("clSubmit").addEventListener("click", ()=>{
+  const nom=document.getElementById("clNom").value.trim();
+  const tel=document.getElementById("clTel").value.trim();
+  const note=document.getElementById("clNote").value.trim();
+  if(!nom){ alert("Merci de saisir le nom du client."); return; }
+  if(DB.clients.find(c=>c.nom.toLowerCase()===nom.toLowerCase())){ alert("Ce client existe déjà."); return; }
+  const c={id:uid(), nom, tel, note};
+  DB.clients.push(c);
+  saveDB();
+  syncInsert("clients", c);
+  document.getElementById("clNom").value=""; document.getElementById("clTel").value=""; document.getElementById("clNote").value="";
+  refreshClientsDatalist();
+  renderClientsList();
+  selectClient(c.id);
+});
+
+function clientStats(clientNom){
+  const items=DB.courses.filter(c=>(c.client||"").toLowerCase()===(clientNom||"").toLowerCase());
+  const total=items.reduce((s,c)=>s+c.prixFinal,0);
+  return {nb:items.length, total};
+}
+
+function renderClientsList(){
+  const box=document.getElementById("clientsListBox");
+  refreshClientsDatalist();
+  if(DB.clients.length===0){ box.innerHTML=`<div class="empty">Aucun client pour l'instant.</div>`; return; }
+  const sorted=[...DB.clients].sort((a,b)=>a.nom.localeCompare(b.nom));
+  box.innerHTML = sorted.map(c=>{
+    const st=clientStats(c.nom);
+    const active = c.id===selectedClientId ? "border-color:var(--blue-500);background:var(--blue-100);" : "";
+    return `<div onclick="selectClient('${c.id}')" style="cursor:pointer;padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);margin-bottom:8px;${active}">
+      <div style="font-weight:600;">${escapeHtml(c.nom)}</div>
+      <div class="hint">${st.nb} course${st.nb>1?'s':''} · ${fmt(st.total)} DT</div>
+    </div>`;
+  }).join("");
+}
+
+function selectClient(id){
+  selectedClientId=id;
+  editingRdvId=null;
+  renderClientsList();
+  renderClientDetail();
+}
+
+function renderClientDetail(){
+  const box=document.getElementById("clientDetailBox");
+  const client=DB.clients.find(c=>c.id===selectedClientId);
+  if(!client){ box.innerHTML=`<div class="card"><div class="empty">Sélectionnez ou ajoutez un client pour voir sa fiche.</div></div>`; return; }
+
+  const st=clientStats(client.nom);
+  const rdvs=DB.rendezvous.filter(r=>r.clientId===client.id);
+  const editingRdv = editingRdvId ? rdvs.find(r=>r.id===editingRdvId) : null;
+
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="margin:0 0 4px;font-size:19px;">${escapeHtml(client.nom)}</h2>
+          <p class="hint" style="margin:0;">${client.tel?escapeHtml(client.tel):"Téléphone non renseigné"}${client.note?" · "+escapeHtml(client.note):""}</p>
+        </div>
+        <button class="btn btn-danger-ghost btn-sm" onclick="deleteClient('${client.id}')">Supprimer le client</button>
+      </div>
+      <div class="grid cols-3" style="margin-top:16px;">
+        <div class="stat-card stat-blue"><div class="label">Courses effectuées</div><div class="stat-value">${st.nb}</div></div>
+        <div class="stat-card stat-green"><div class="label">Total payé</div><div class="stat-value">${fmt(st.total)} DT</div></div>
+        <div class="stat-card stat-navy"><div class="label">Rendez-vous actifs</div><div class="stat-value">${rdvs.length}</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title"><span class="amber-dot"></span>Rendez-vous récurrents</div>
+      <div class="field-row">
+        <div class="field"><label>Heure</label><input type="time" id="rHeure" value="${editingRdv?editingRdv.heure:'09:00'}"></div>
+        <div class="field"><label>Note</label><input type="text" id="rNote" placeholder="ex : trajet domicile-travail" value="${editingRdv?escapeHtml(editingRdv.note):''}"></div>
+      </div>
+      <label>Jours concernés</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px;">
+        ${JOURS_SEMAINE.map((j,i)=>`
+          <label style="display:flex;align-items:center;gap:5px;background:#eef1f8;padding:6px 10px;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--ink-600);cursor:pointer;">
+            <input type="checkbox" class="rJour" value="${i}" style="accent-color:var(--blue-600);" ${(!editingRdv || editingRdv.jours.includes(i))?"checked":""}> ${j}
+          </label>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" id="rSubmit" style="flex:1;">${editingRdv?"Enregistrer les modifications":"Ajouter le rendez-vous"}</button>
+        ${editingRdv?`<button class="btn btn-ghost" id="rCancel">Annuler</button>`:""}
+      </div>
+      <div class="divider-route"></div>
+      <div id="rdvListBox">
+        ${rdvs.length===0? `<div class="empty">Aucun rendez-vous récurrent pour ce client.</div>` :
+          rdvs.map(r=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);">
+              <div>
+                <strong>${r.heure}</strong> — ${r.jours.map(i=>JOURS_SEMAINE[i]).join(", ")}
+                ${r.note?`<div class="hint">${escapeHtml(r.note)}</div>`:""}
+              </div>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" onclick="editRdv('${r.id}')">Modifier</button>
+                <button class="btn btn-danger-ghost btn-sm" onclick="deleteRdv('${r.id}')">Suppr.</button>
+              </div>
+            </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="amber-dot"></span>Historique de travail</div>
+      <div class="field-row" style="align-items:end;">
+        <div class="field" style="margin-bottom:0;"><label>Du</label><input type="date" id="clFrom" value="2000-01-01"></div>
+        <div class="field" style="margin-bottom:0;"><label>Au</label><input type="date" id="clTo" value="${todayISO()}"></div>
+      </div>
+      <div style="max-height:340px;overflow:auto;margin-top:14px;">
+        <table><thead><tr><th>Date</th><th>Trajet</th><th>Km</th><th>Prix</th></tr></thead><tbody id="clHistTbody"></tbody></table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("rSubmit").addEventListener("click", ()=>{
+    const heure=document.getElementById("rHeure").value;
+    const note=document.getElementById("rNote").value.trim();
+    const jours=[...document.querySelectorAll(".rJour:checked")].map(el=>parseInt(el.value));
+    if(!heure || jours.length===0){ alert("Merci de choisir une heure et au moins un jour."); return; }
+    if(editingRdv){
+      editingRdv.heure=heure; editingRdv.note=note; editingRdv.jours=jours;
+      syncUpdate("rendezvous", editingRdv.id, editingRdv);
+    } else {
+      const newRdv={id:uid(), clientId:client.id, heure, note, jours};
+      DB.rendezvous.push(newRdv);
+      syncInsert("rendezvous", newRdv);
+    }
+    editingRdvId=null;
+    saveDB();
+    renderClientDetail();
+    renderCalendar();
+  });
+  const cancelBtn=document.getElementById("rCancel");
+  if(cancelBtn) cancelBtn.addEventListener("click", ()=>{ editingRdvId=null; renderClientDetail(); });
+
+  const clFrom=document.getElementById("clFrom"), clTo=document.getElementById("clTo");
+  function renderHist(){
+    const items=DB.courses.filter(c=>(c.client||"").toLowerCase()===client.nom.toLowerCase() && c.date>=clFrom.value && c.date<=clTo.value)
+      .sort((a,b)=>b.date.localeCompare(a.date));
+    const tbody=document.getElementById("clHistTbody");
+    tbody.innerHTML = items.length ? items.map(c=>`
+      <tr><td>${frDate(c.date)}</td><td>${escapeHtml(c.depart)} → ${escapeHtml(c.arrivee)}</td><td>${c.km||0} km</td><td>${fmt(c.prixFinal)} DT</td></tr>
+    `).join("") : `<tr><td colspan="4"><div class="empty">Aucune course sur cette période.</div></td></tr>`;
+  }
+  clFrom.addEventListener("change", renderHist);
+  clTo.addEventListener("change", renderHist);
+  renderHist();
+}
+
+function editRdv(id){ editingRdvId=id; renderClientDetail(); }
+function deleteRdv(id){
+  if(!confirm("Supprimer ce rendez-vous récurrent ?")) return;
+  DB.rendezvous=DB.rendezvous.filter(r=>r.id!==id);
+  saveDB();
+  syncDelete('rendezvous', id);
+  renderClientDetail();
+  renderCalendar();
+}
+function deleteClient(id){
+  if(!confirm("Supprimer ce client et ses rendez-vous récurrents ? (les courses déjà enregistrées sont conservées)")) return;
+  DB.clients=DB.clients.filter(c=>c.id!==id);
+  DB.rendezvous=DB.rendezvous.filter(r=>r.clientId!==id);
+  saveDB();
+  syncDelete('clients', id);
+  selectedClientId=null;
+  renderClientsList();
+  renderClientDetail();
+  renderCalendar();
+}
+
+function renderDashRdv(){
+  const box=document.getElementById("dashRdv");
+  const jsDay=new Date().getDay(); // 0=dim
+  const todayIdx=(jsDay+6)%7; // 0=lun
+  const items=DB.rendezvous.filter(r=>r.jours.includes(todayIdx)).sort((a,b)=>a.heure.localeCompare(b.heure));
+  if(items.length===0){ box.innerHTML=`<div class="empty">Aucun rendez-vous récurrent aujourd'hui.</div>`; return; }
+  box.innerHTML = items.map(r=>{
+    const client=DB.clients.find(c=>c.id===r.clientId);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);">
+      <div><strong>${client?escapeHtml(client.nom):"Client supprimé"}</strong>${r.note?`<div class="hint">${escapeHtml(r.note)}</div>`:""}</div>
+      <span class="pill pill-amber">${r.heure}</span>
+    </div>`;
+  }).join("");
+}
+
+/* ============================================================
+   CALENDRIER
+   ============================================================ */
+let calYear, calMonth, selectedDay=null;
+(function initCal(){ const d=new Date(); calYear=d.getFullYear(); calMonth=d.getMonth(); })();
+
+const DOW=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+document.getElementById("calDow").innerHTML = DOW.map(d=>`<div class="cal-dow">${d}</div>`).join("");
+
+document.getElementById("calPrev").addEventListener("click", ()=>{ calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCalendar(); });
+document.getElementById("calNext").addEventListener("click", ()=>{ calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderCalendar(); });
+document.getElementById("calToday").addEventListener("click", ()=>{ const d=new Date(); calYear=d.getFullYear(); calMonth=d.getMonth(); selectedDay=todayISO(); renderCalendar(); });
+
+const MONTHS=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
+function renderCalendar(){
+  document.getElementById("calMonthLabel").textContent = `${MONTHS[calMonth]} ${calYear}`;
+  const grid=document.getElementById("calGrid");
+  const first=new Date(calYear,calMonth,1);
+  let startOffset=(first.getDay()+6)%7; // lundi=0
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const todayStr=todayISO();
+
+  const coursesByDay={};
+  DB.courses.forEach(c=>{ coursesByDay[c.date]=(coursesByDay[c.date]||0)+1; });
+
+  let html="";
+  for(let i=0;i<startOffset;i++) html+=`<div class="cal-day muted"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const iso=`${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    const has=coursesByDay[iso];
+    const classes=["cal-day"];
+    if(has) classes.push("has-course");
+    if(iso===todayStr) classes.push("today");
+    if(iso===selectedDay) classes.push("selected");
+    html+=`<div class="${classes.join(' ')}" data-date="${iso}">${day}${has?`<span class="badge">${has} course${has>1?'s':''}</span>`:""}</div>`;
+  }
+  grid.innerHTML=html;
+
+  grid.querySelectorAll(".cal-day[data-date]").forEach(el=>{
+    el.addEventListener("click", ()=>{ selectedDay=el.dataset.date; renderCalendar(); renderSelectedDay(); });
+  });
+
+  renderSelectedDay();
+  renderDashMini();
+  renderDashRdv();
+}
+
+function renderSelectedDay(){
+  const title=document.getElementById("selDayTitle");
+  const list=document.getElementById("selDayList");
+  if(!selectedDay){ title.textContent="Sélectionnez un jour"; list.innerHTML=`<div class="empty">Cliquez sur une date du calendrier pour voir ses courses.</div>`; return; }
+  title.textContent = `Courses du ${frDate(selectedDay)}`;
+  const items=DB.courses.filter(c=>c.date===selectedDay);
+  if(items.length===0){ list.innerHTML=`<div class="empty">Aucune course ce jour-là.</div>`; return; }
+  list.innerHTML = items.map(c=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);">
+      <div><strong>${escapeHtml(c.depart)} → ${escapeHtml(c.arrivee)}</strong><div class="hint">${c.km} km</div></div>
+      <span class="pill pill-green">${fmt(c.prixFinal)} DT</span>
+    </div>`).join("");
+}
+
+function renderDashMini(){
+  const monthCourses=DB.courses.filter(c=>c.date.slice(0,7)===`${calYear}-${String(calMonth+1).padStart(2,"0")}`);
+  const gain=monthCourses.reduce((s,c)=>s+c.prixFinal,0);
+  const nb=monthCourses.length;
+  const km=monthCourses.reduce((s,c)=>s+(c.km||0),0);
+  document.getElementById("dashMini").innerHTML=`
+    <div class="stat-card stat-blue"><div class="label">Courses ce mois</div><div class="stat-value">${nb}</div></div>
+    <div class="stat-card stat-green"><div class="label">Gains du mois</div><div class="stat-value">${fmt(gain)} DT</div></div>
+    <div class="stat-card stat-navy"><div class="label">Km parcourus</div><div class="stat-value">${fmt(km)}</div></div>
+  `;
+}
+
+/* ============================================================
+   BILAN
+   ============================================================ */
+const bFrom=document.getElementById("bFrom"), bTo=document.getElementById("bTo");
+(function initRange(){
+  const d=new Date();
+  const first=new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10);
+  bFrom.value=first; bTo.value=todayISO();
+})();
+bFrom.addEventListener("change", refreshBilan);
+bTo.addEventListener("change", refreshBilan);
+document.querySelectorAll("[data-range]").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    const d=new Date(); const range=btn.dataset.range;
+    if(range==="today"){ bFrom.value=todayISO(); bTo.value=todayISO(); }
+    else if(range==="week"){
+      const day=(d.getDay()+6)%7;
+      const monday=new Date(d); monday.setDate(d.getDate()-day);
+      bFrom.value=monday.toISOString().slice(0,10); bTo.value=todayISO();
+    } else if(range==="month"){
+      bFrom.value=new Date(d.getFullYear(),d.getMonth(),1).toISOString().slice(0,10); bTo.value=todayISO();
+    } else if(range==="year"){
+      bFrom.value=new Date(d.getFullYear(),0,1).toISOString().slice(0,10); bTo.value=todayISO();
+    } else if(range==="all"){
+      bFrom.value="2000-01-01"; bTo.value=todayISO();
+    }
+    refreshBilan();
+  });
+});
+
+let pieChartInstance=null;
+function inRange(iso){ return iso>=bFrom.value && iso<=bTo.value; }
+
+function refreshBilan(){
+  const gains=DB.courses.filter(c=>inRange(c.date)).reduce((s,c)=>s+c.prixFinal,0);
+  const entretien=DB.entretiens.filter(c=>inRange(c.date)).reduce((s,c)=>s+c.montant,0);
+  const carburant=DB.carburant.filter(c=>inRange(c.date)).reduce((s,c)=>s+c.montant,0);
+  const salaire=DB.salaires.filter(c=>inRange(c.date)).reduce((s,c)=>s+c.montant,0);
+  const net=gains-entretien-carburant-salaire;
+
+  document.getElementById("statGain").textContent=fmt(gains)+" DT";
+  document.getElementById("statEntretien").textContent=fmt(entretien)+" DT";
+  document.getElementById("statCarburant").textContent=fmt(carburant)+" DT";
+  document.getElementById("statSalaire").textContent=fmt(salaire)+" DT";
+  const netEl=document.getElementById("statNet");
+  netEl.textContent=fmt(net)+" DT";
+  netEl.parentElement.classList.toggle("stat-green", net>=0);
+  netEl.parentElement.classList.toggle("stat-red", net<0);
+  document.getElementById("netHint").textContent = net>=0
+    ? "Résultat positif sur la période sélectionnée."
+    : "Attention : les charges dépassent les gains sur cette période.";
+
+  const total = entretien+carburant+salaire+Math.max(net,0);
+  const data = total>0 ? [Math.max(net,0),entretien,carburant,salaire] : [1,0,0,0];
+  const ctx=document.getElementById("pieChart").getContext("2d");
+  if(pieChartInstance) pieChartInstance.destroy();
+  pieChartInstance = new Chart(ctx, {
+    type:"doughnut",
+    data:{
+      labels:["Bénéfice net","Entretien","Carburant","Salaire chauffeur"],
+      datasets:[{ data, backgroundColor:["#16a34a","#d97706","#dc2626","#1d4ed8"], borderWidth:2, borderColor:"#fff" }]
+    },
+    options:{
+      plugins:{
+        legend:{position:"bottom", labels:{font:{family:"Inter",size:12}, padding:14}},
+        tooltip:{ callbacks:{ label:(ctx)=>{
+          const sum=ctx.dataset.data.reduce((a,b)=>a+b,0);
+          const pct = sum>0 ? Math.round(ctx.parsed/sum*1000)/10 : 0;
+          return ` ${ctx.label} : ${fmt(ctx.parsed)} DT (${pct}%)`;
+        }}}
+      },
+      cutout:"62%"
+    }
+  });
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+renderCourses();
+renderCharges();
+renderCalendar();
+refreshBilan();
+refreshClientsDatalist();
+renderClientsList();
+pullFromSupabase();
+</script>
+</body>
+</html>
